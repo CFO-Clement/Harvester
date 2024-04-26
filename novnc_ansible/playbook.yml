@@ -1,0 +1,77 @@
+---
+- hosts: localhost
+  become: yes
+  tasks:
+    - name: Install necessary packages
+      apt:
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - python3-pip
+        - tightvncserver
+
+    - name: Install pip pexpect
+      pip:
+        name: pexpect
+        state: latest
+
+    - name: Setup initial VNC server to set password
+      expect:
+        command: tightvncserver :2
+        responses:
+          Password: "password"
+          Verify: "password"
+          "Would you like to enter a view-only password (y/n)?": "n"
+      ignore_errors: yes
+
+    - name: Kill any existing VNC server sessions
+      shell: tightvncserver -kill :2
+      ignore_errors: yes
+
+    - name: Copy VNC server script from local directory
+      copy:
+        src: files/vncserver
+        dest: /usr/local/bin/vncserver
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy VNC systemd service file from local directory
+      copy:
+        src: files/vncserver.service
+        dest: /etc/systemd/system/vncserver.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload systemd daemon and enable & start VNC service
+      systemd:
+        daemon_reload: yes
+        name: vncserver.service
+        enabled: yes
+        state: started
+
+    - name: Clone noVNC repository
+      git:
+        repo: 'https://github.com/novnc/noVNC.git'
+        dest: /opt/noVNC
+        clone: yes
+        update: yes
+
+    - name: Copy noVNC systemd service file from local directory
+      copy:
+        src: files/novnc.service
+        dest: /etc/systemd/system/novnc.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload systemd to recognize new noVNC service
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start noVNC service
+      systemd:
+        name: novnc
+        enabled: yes
+        state: started

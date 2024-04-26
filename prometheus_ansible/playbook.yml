@@ -1,0 +1,130 @@
+---
+- hosts: localhost
+  become: yes
+  tasks:
+    - name: Create Prometheus user
+      user:
+        name: prometheus
+        system: yes
+        shell: /bin/false
+
+    - name: Create required Prometheus directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: prometheus
+        group: prometheus
+        mode: '0755'
+      loop:
+        - /etc/prometheus
+        - /var/lib/prometheus
+        - /etc/prometheus/consoles
+        - /etc/prometheus/console_libraries
+        - /opt/prometheus_temp
+
+    - name: Copy Prometheus configuration file
+      copy:
+        src: files/prometheus.yml
+        dest: /etc/prometheus/prometheus.yml
+        owner: prometheus
+        group: prometheus
+        mode: '0644'
+
+    - name: Install Prometheus dependencies
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - wget
+        - tar
+
+    - name: Download Prometheus tarball if not present
+      get_url:
+        url: "https://github.com/prometheus/prometheus/releases/download/v2.33.1/prometheus-2.33.1.linux-amd64.tar.gz"
+        dest: /tmp/prometheus.tar.gz
+
+    - name: Extract Prometheus to a temporary directory
+      unarchive:
+        src: /tmp/prometheus.tar.gz
+        dest: /opt/prometheus_temp
+        remote_src: yes
+        creates: /opt/prometheus_temp/prometheus-2.33.1.linux-amd64
+
+    - name: Move Prometheus binaries to /usr/local/bin
+      command: mv /opt/prometheus_temp/prometheus-2.33.1.linux-amd64/prometheus /usr/local/bin/prometheus
+      args:
+        creates: /usr/local/bin/prometheus
+
+    - name: Move Prometheus node exporter to /usr/local/bin
+      command: mv /opt/prometheus_temp/prometheus-2.33.1.linux-amd64/promtool /usr/local/bin/promtool
+      args:
+        creates: /usr/local/bin/promtool
+
+    - name: Clean up temporary Prometheus directory
+      file:
+        path: /opt/prometheus_temp
+        state: absent
+
+    - name: Copy Prometheus systemd service file
+      copy:
+        src: files/prometheus.service
+        dest: /etc/systemd/system/prometheus.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload systemd to recognize new Prometheus service
+      systemd:
+        daemon_reload: yes
+
+    - name: Create Node Exporter user
+      user:
+        name: node_exporter
+        system: yes
+        shell: /bin/false
+
+    - name: Download Node Exporter if not present
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz"
+        dest: /tmp/node_exporter.tar.gz
+
+    - name: Extract Node Exporter
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /opt
+        remote_src: yes
+        creates: /opt/node_exporter-1.3.1.linux-amd64
+
+    - name: Move Node Exporter binary to /usr/local/bin
+      command: mv /opt/node_exporter-1.3.1.linux-amd64/node_exporter /usr/local/bin/node_exporter
+      args:
+        creates: /usr/local/bin/node_exporter
+
+    - name: Clean up Node Exporter tarball
+      file:
+        path: "/tmp/node_exporter.tar.gz"
+        state: absent
+
+    - name: Copy node_exporter systemd service file
+      copy:
+        src: files/node_exporter.service
+        dest: /etc/systemd/system/node_exporter.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Reload systemd to recognize new Node Exporter service
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Node Exporter service
+      systemd:
+        name: node_exporter
+        enabled: yes
+        state: started
+
+    - name: Enable and start Prometheus service
+      systemd:
+        name: prometheus
+        enabled: yes
+        state: started
