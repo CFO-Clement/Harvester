@@ -13,4 +13,4 @@ scrape_configs:
       - targets: ['localhost:9100']
 
 remote_write:
-  - url: "http://prometheus_user:prometheus@192.168.122.136:5432/write"
+  - url: "http://prometheus_user:prometheus@192.168.122.20:9201/write"
